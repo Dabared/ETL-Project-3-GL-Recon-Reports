@@ -1,0 +1,137 @@
+Sub ImportAndCleanTransactionData()
+    ' Variables declaration
+    Dim FilePath As String
+    Dim FileNum As Integer
+    Dim LineData As String
+    Dim ws As Worksheet
+    Dim RowNum As Long
+    Dim lastRow As Long
+    Dim i As Long
+    Dim fd As FileDialog
+    Dim dict As Object
+    Dim RowsToDelete As Collection
+    Dim rowToDelete As Variant
+    
+    ' Initialize the dictionary to track duplicates
+    Set dict = CreateObject("Scripting.Dictionary")
+    Set RowsToDelete = New Collection
+    
+    ' Initialize the file dialog for selecting the text file
+    Set fd = Application.FileDialog(msoFileDialogFilePicker)
+    fd.Title = "Select the Office Transaction Report"
+    fd.Filters.Add "Text Files", "*.txt", 1
+    fd.AllowMultiSelect = False
+    
+    ' Show the file dialog and get the selected file path
+    If fd.Show = -1 Then
+        FilePath = fd.SelectedItems(1)
+    Else
+        MsgBox "No file selected. Exiting macro."
+        Exit Sub
+    End If
+    
+    ' Open the file
+    FileNum = FreeFile
+    Open FilePath For Input As FileNum
+    
+    ' Set the worksheet for the output
+    Set ws = ThisWorkbook.Sheets("Transaction")
+    
+    ' Clear existing data in the sheet starting from row 2
+    ws.Rows("2:" & ws.Rows.Count).ClearContents
+    
+    ' Initialize row counter (Start at row 2)
+    RowNum = 2
+    
+    ' Read each line in the file
+    Do While Not EOF(FileNum)
+        Line Input #FileNum, LineData
+        
+        ' Extract and place data into separate columns
+        ws.Cells(RowNum, 1).Value = Trim(Mid(LineData, 1, 11))   ' TRAN DATE
+        ws.Cells(RowNum, 2).Value = Trim(Mid(LineData, 12, 10))  ' TRAN ID
+        ws.Cells(RowNum, 3).Value = Trim(Mid(LineData, 22, 20))  ' Ref Num
+        ws.Cells(RowNum, 4).Value = Trim(Mid(LineData, 43, 20))  ' PARTICULARS
+        ws.Cells(RowNum, 5).Value = Trim(Mid(LineData, 63, 20))  ' DebitAmount
+        ws.Cells(RowNum, 6).Value = Trim(Mid(LineData, 90, 20))  ' CreditAmount
+        ws.Cells(RowNum, 7).Value = Trim(Mid(LineData, 110, 20)) ' Balance
+        
+        ' Increment row counter
+        RowNum = RowNum + 1
+    Loop
+    
+    ' Close the file
+    Close FileNum
+    
+    ' Get the last row with data in the sheet
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    
+    ' Loop through each row to perform validations and delete rows based on conditions
+    For i = lastRow To 2 Step -1 ' Assuming headers are in the first row
+        
+        ' 1st Validation: Delete the row if Column E or F is of type General or empty
+        If Application.WorksheetFunction.IsText(ws.Cells(i, 5)) Or _
+           Application.WorksheetFunction.IsText(ws.Cells(i, 6)) Then
+            ws.Rows(i).Delete
+            GoTo NextRow ' Skip to next row after deletion
+        End If
+        
+         ' 4th Validation: Check for duplicates in Column C
+        If dict.exists(ws.Cells(i, 3).Value) Then
+            ' Mark both rows for deletion
+            RowsToDelete.Add i
+            RowsToDelete.Add dict(ws.Cells(i, 3).Value)
+        Else
+            dict.Add ws.Cells(i, 3).Value, i
+        End If
+        
+        ' 2nd Validation: Delete the row if Column A, B, or G is blank or contains unwanted text
+        If ws.Cells(i, 1).Value = "" Or ws.Cells(i, 2).Value = "" Or ws.Cells(i, 7).Value = "" Or _
+           ws.Cells(i, 2).Value = "Tran" Or _
+           ws.Cells(i, 4).Value = "Alliance Finance Co" Or _
+           ws.Cells(i, 1).Value = "TRAN DATE" Or _
+           ws.Cells(i, 1).Value = "----------" Or _
+           ws.Cells(i, 1).Value = "GL" Or _
+           ws.Cells(i, 3).Value = "Page Total Cr" Or _
+           ws.Cells(i, 3).Value = "Page Total De" Or _
+           ws.Cells(i, 3).Value = "Closing Balan" Or _
+           ws.Cells(i, 3).Value = "Total Credit" Or _
+           ws.Cells(i, 3).Value = "Total Debit" Or _
+           ws.Cells(i, 3).Value = "Signature" Then
+            ws.Rows(i).Delete
+            GoTo NextRow ' Skip to next row after deletion
+        End If
+        
+        ' 3rd Validation: Add a leading "0" to Column B if the first character is not "S"
+        If Left(ws.Cells(i, 2).Value, 1) <> "S" Then
+            ws.Cells(i, 2).Value = "'0" & ws.Cells(i, 2).Value
+        End If
+        
+    
+        
+NextRow:
+    Next i
+    
+    ' Delete marked rows in reverse order
+    For Each rowToDelete In RowsToDelete
+        ws.Rows(rowToDelete).Delete
+    Next rowToDelete
+    
+    ' Delete any completely blank rows
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    For i = lastRow To 2 Step -1
+        If Application.WorksheetFunction.CountA(ws.Rows(i)) = 0 Then
+            ws.Rows(i).Delete
+        End If
+    Next i
+    'Clear Colum G
+    ws.Columns("G").ClearContents
+    
+    ' Auto-fit column widths
+    ws.Columns.AutoFit
+    
+    
+    MsgBox "Data extraction, cleanup, and row deletion complete!"
+End Sub
+
+
